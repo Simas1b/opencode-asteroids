@@ -31,14 +31,14 @@ const randInt = (min, max) => Math.floor(rand(min, max + 1));
 
 // ── Bullet ────────────────────────────────────────────────────────────────────
 class Bullet {
-  constructor(x, y, angle) {
+  constructor(x, y, angle, speed = 520, ttl = 1.1, pierce = 0) {
     this.x = x;
     this.y = y;
-    const SPEED = 520;
-    this.vx = Math.cos(angle) * SPEED;
-    this.vy = Math.sin(angle) * SPEED;
-    this.ttl  = 1.1;
-    this.radius = 2;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.ttl  = ttl;
+    this.pierce = pierce;
+    this.radius = pierce > 0 ? 2.6 : 2;
     this.dead = false;
   }
 
@@ -50,7 +50,16 @@ class Bullet {
   }
 
   draw() {
-    ctx.fillStyle = '#fff';
+    // Las balas perforantes dejan una estela que marca su alcance extra
+    if (this.pierce > 0) {
+      ctx.strokeStyle = 'rgba(124, 249, 255, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(this.x, this.y);
+      ctx.lineTo(this.x - this.vx * 0.03, this.y - this.vy * 0.03);
+      ctx.stroke();
+    }
+    ctx.fillStyle = this.pierce > 0 ? '#7cf9ff' : '#fff';
     ctx.beginPath();
     ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
     ctx.fill();
@@ -179,43 +188,73 @@ class ShootingStar extends Asteroid {
   }
 }
 
-// ── Escudo ────────────────────────────────────────────────────────────────────
-const SHIELD_MAX_ENERGY   = 100;  // barra completa
-const SHIELD_DRAIN        = 25;   // energía por segundo activo (4 s máx.)
-const SHIELD_RECHARGE     = 12;   // energía por segundo inactivo
-const SHIELD_MIN_TO_START = 20;   // energía mínima para encenderlo
-const SHIELD_MAX_HITS     = 3;    // golpes absorbidos por activación
-const SHIELD_RADIUS       = 26;
-
 // ── Skins de la nave ──────────────────────────────────────────────────────────
+// Cada skin cambia aspecto y jugabilidad. `stats` define el comportamiento de la
+// nave; `trait` es la etiqueta corta que se muestra en pantalla.
+//   fireDelay   segundos entre disparos
+//   bulletSpeed px/s de la bala
+//   bulletTtl   segundos de vida (alcance)
+//   pierce      asteroides que la bala atraviesa antes de morir
+//   spread      desvíos angulares (rad) de cada bala del disparo
+//   line        desvíos laterales (px) de cada bala del disparo
+//   rotSpeed    rad/s de giro
+//   thrust      px/s² de empuje
+//   shield      parámetros del escudo de esta skin
 const SKINS = [
   {
     name: 'CLÁSICO',
+    trait: 'EQUILIBRADO',
     color: '#ffffff',
     flame: 'rgba(255, 130, 0, 0.85)',
     flameX: -8,
     verts: [[20, 0], [-12, -9], [-7, 0], [-12, 9]],
+    stats: {
+      fireDelay: 0.2, bulletSpeed: 520, bulletTtl: 1.1, pierce: 0,
+      spread: [0], line: [0], rotSpeed: 3.5, thrust: 260,
+      shield: { energy: 100, drain: 25, recharge: 12, minStart: 20, hits: 3, radius: 26 },
+    },
   },
   {
     name: 'HALCÓN',
+    trait: 'PERFORANTE',
     color: '#4dfffc',
     flame: 'rgba(0, 220, 255, 0.9)',
-    flameX: -8,
-    verts: [[20, 0], [4, 7], [-4, 4], [-12, 10], [-6, 0], [-4, -4], [-12, -10], [4, -7]],
+    flameX: -9,
+    verts: [
+      [23, 0], [7, -4], [2, -6], [-7, -15], [-3, -5], [-13, -5],
+      [-9, 0], [-13, 5], [-3, 5], [-7, 15], [2, 6], [7, 4],
+    ],
+    stats: {
+      fireDelay: 0.34, bulletSpeed: 680, bulletTtl: 1.35, pierce: 2,
+      spread: [0], line: [0], rotSpeed: 2.9, thrust: 260,
+      shield: { energy: 100, drain: 25, recharge: 12, minStart: 20, hits: 3, radius: 26 },
+    },
   },
   {
     name: 'ROMBO',
+    trait: 'ABANICO',
     color: '#ff5fd0',
     flame: 'rgba(255, 95, 208, 0.9)',
     flameX: -13,
     verts: [[20, 0], [0, -9], [-14, 0], [0, 9]],
+    stats: {
+      fireDelay: 0.26, bulletSpeed: 500, bulletTtl: 0.72, pierce: 0,
+      spread: [-0.16, 0, 0.16], line: [0, 0, 0], rotSpeed: 3.5, thrust: 275,
+      shield: { energy: 100, drain: 25, recharge: 12, minStart: 20, hits: 3, radius: 26 },
+    },
   },
   {
     name: 'SIGILOSA',
+    trait: 'BALUARTE',
     color: '#ffd800',
     flame: 'rgba(255, 216, 0, 0.9)',
     flameX: -10,
     verts: [[20, 0], [0, -7], [-13, -6], [-9, 0], [-13, 6], [0, 7]],
+    stats: {
+      fireDelay: 0.14, bulletSpeed: 480, bulletTtl: 0.95, pierce: 0,
+      spread: [0, 0], line: [-6, 6], rotSpeed: 3.2, thrust: 210,
+      shield: { energy: 130, drain: 20, recharge: 20, minStart: 20, hits: 4, radius: 30 },
+    },
   },
 ];
 
@@ -234,6 +273,9 @@ function cycleSkin() {
   try { localStorage.setItem(SKIN_STORAGE_KEY, String(skinIndex)); } catch (e) {}
 }
 
+const activeSkin  = () => SKINS[skinIndex];
+const activeStats = () => SKINS[skinIndex].stats;
+
 // ── Ship ──────────────────────────────────────────────────────────────────────
 class Ship {
   constructor() { this.reset(); }
@@ -251,15 +293,40 @@ class Ship {
     this.speedBoost    = 0;
     this.tripleShot    = 0;
     this.dead          = false;
+
+    // El escudo hereda su configuración de la skin activa
+    const sh = activeStats().shield;
+    this.shieldMax      = sh.energy;
+    this.shieldDrain    = sh.drain;
+    this.shieldRecharge = sh.recharge;
+    this.shieldMinStart = sh.minStart;
+    this.shieldMaxHits  = sh.hits;
+    this.shieldRadius   = sh.radius;
+
     this.shield        = false;
-    this.shieldEnergy  = SHIELD_MAX_ENERGY;
-    this.shieldHits    = SHIELD_MAX_HITS;
+    this.shieldEnergy  = sh.energy;
+    this.shieldHits    = sh.hits;
     this.shieldFlash   = 0;
     this.shieldPhase   = 0;
+    this.skin          = skinIndex;
+  }
+
+  applySkin() {
+    const sh = activeStats().shield;
+    this.shieldMax      = sh.energy;
+    this.shieldDrain    = sh.drain;
+    this.shieldRecharge = sh.recharge;
+    this.shieldMinStart = sh.minStart;
+    this.shieldMaxHits  = sh.hits;
+    this.shieldRadius   = sh.radius;
+    this.shieldEnergy   = Math.min(this.shieldEnergy, sh.energy);
+    this.shieldHits     = Math.min(this.shieldHits, sh.hits);
+    this.skin           = skinIndex;
   }
 
   update(dt) {
     if (this.dead) return;
+    if (this.skin !== skinIndex) this.applySkin();
     if (this.invincible    > 0) this.invincible    -= dt;
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.speedBoost    > 0) this.speedBoost    -= dt;
@@ -269,20 +336,21 @@ class Ship {
 
     // Escudo: drena energía mientras está activo, recarga inactivo
     if (this.shield) {
-      this.shieldEnergy -= SHIELD_DRAIN * dt;
+      this.shieldEnergy -= this.shieldDrain * dt;
       if (this.shieldEnergy <= 0) {
         this.shieldEnergy = 0;
         this.breakShield();
       }
-    } else if (this.shieldEnergy < SHIELD_MAX_ENERGY) {
+    } else if (this.shieldEnergy < this.shieldMax) {
       this.shieldEnergy = Math.min(
-        SHIELD_MAX_ENERGY,
-        this.shieldEnergy + SHIELD_RECHARGE * dt
+        this.shieldMax,
+        this.shieldEnergy + this.shieldRecharge * dt
       );
     }
 
-    const ROT   = 3.5;   // rad/s
-    const THRUST = 260;  // px/s²
+    const stats  = activeStats();
+    const ROT    = stats.rotSpeed;   // rad/s
+    const THRUST = stats.thrust;     // px/s²
     const DRAG   = 0.987;
 
     if (keys['ArrowLeft'])  this.angle -= ROT * dt;
@@ -303,10 +371,12 @@ class Ship {
 
   tryShoot() {
     if (this.shootCooldown > 0 || this.dead) return [];
-    this.shootCooldown = 0.2;
-    const NOSE = 21;
-    const ox = this.x + Math.cos(this.angle) * NOSE;
-    const oy = this.y + Math.sin(this.angle) * NOSE;
+    const stats = activeStats();
+    this.shootCooldown = stats.fireDelay;
+    const NOSE = Math.max(...activeSkin().verts.map(v => v[0])) + 1;
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
+
     if (this.tripleShot > 0) {
       // Ráfaga de 3 balas en línea recta, una detrás de otra
       const GAP = 14;
@@ -314,23 +384,41 @@ class Ship {
       for (let i = 0; i < 3; i++) {
         const d = NOSE + i * GAP;
         volley.push(new Bullet(
-          this.x + Math.cos(this.angle) * d,
-          this.y + Math.sin(this.angle) * d,
-          this.angle
+          this.x + cos * d,
+          this.y + sin * d,
+          this.angle,
+          stats.bulletSpeed,
+          stats.bulletTtl,
+          stats.pierce
         ));
       }
       return volley;
     }
-    return [new Bullet(ox, oy, this.angle)];
+
+    // Patrón propio de la skin (simple, abanico o cañones paralelos)
+    const volley = [];
+    for (let i = 0; i < stats.spread.length; i++) {
+      const off = stats.line[i] || 0;
+      const a = this.angle + stats.spread[i];
+      volley.push(new Bullet(
+        this.x + cos * NOSE - sin * off,
+        this.y + sin * NOSE + cos * off,
+        a,
+        stats.bulletSpeed,
+        stats.bulletTtl,
+        stats.pierce
+      ));
+    }
+    return volley;
   }
 
   toggleShield() {
     if (this.dead) return;
     if (this.shield) {
       this.shield = false;
-    } else if (this.shieldEnergy >= SHIELD_MIN_TO_START) {
+    } else if (this.shieldEnergy >= this.shieldMinStart) {
       this.shield     = true;
-      this.shieldHits = SHIELD_MAX_HITS;
+      this.shieldHits = this.shieldMaxHits;
     }
   }
 
@@ -358,8 +446,8 @@ class Ship {
       ctx.translate(this.x, this.y);
       const pulse = 0.55 + 0.3 * Math.sin(this.shieldPhase * 6);
       ctx.beginPath();
-      ctx.arc(0, 0, SHIELD_RADIUS, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(0,229,255,${(0.06 + 0.08 * (1 - this.shieldEnergy / SHIELD_MAX_ENERGY)).toFixed(2)})`;
+      ctx.arc(0, 0, this.shieldRadius, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(0,229,255,${(0.06 + 0.08 * (1 - this.shieldEnergy / this.shieldMax)).toFixed(2)})`;
       ctx.fill();
       ctx.strokeStyle = `rgba(0,229,255,${pulse.toFixed(2)})`;
       ctx.lineWidth = 2;
@@ -374,7 +462,7 @@ class Ship {
       ctx.strokeStyle = `rgba(255,255,255,${this.shieldFlash.toFixed(2)})`;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(0, 0, SHIELD_RADIUS + 6 * (1 - this.shieldFlash), 0, Math.PI * 2);
+      ctx.arc(0, 0, this.shieldRadius + 6 * (1 - this.shieldFlash), 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -659,13 +747,15 @@ function update(dt) {
   for (const b of bullets) {
     for (const a of asteroids) {
       if (!a.dead && !b.dead && dist(b, a) < a.radius) {
-        b.dead = true;
         a.dead = true;
         score += a.points;
         explode(a.x, a.y, a.size * 5);
         newAsteroids.push(...a.split());
         if (Math.random() < POWERUP_CHANCE)
           powerups.push(new PowerUp(a.x, a.y, pickPowerupType()));
+        // Las balas perforantes siguen de largo hasta agotar su carga
+        if (b.pierce > 0) b.pierce--;
+        else b.dead = true;
       }
     }
   }
@@ -697,8 +787,8 @@ function update(dt) {
             // Reubica los fragmentos fuera del radio del escudo
             for (const k of kids) {
               const ang = rand(0, Math.PI * 2);
-              k.x = wrap(ship.x + Math.cos(ang) * (SHIELD_RADIUS + k.radius + 6), W);
-              k.y = wrap(ship.y + Math.sin(ang) * (SHIELD_RADIUS + k.radius + 6), H);
+              k.x = wrap(ship.x + Math.cos(ang) * (ship.shieldRadius + k.radius + 6), W);
+              k.y = wrap(ship.y + Math.sin(ang) * (ship.shieldRadius + k.radius + 6), H);
               shieldSplit.push(k);
             }
           }
@@ -754,13 +844,13 @@ function drawHUD() {
 
   if (ship) {
     // Energía del escudo + golpes restantes
-    const shieldPct = ship.shieldEnergy / SHIELD_MAX_ENERGY;
-    const hits      = ship.shield ? ship.shieldHits : SHIELD_MAX_HITS;
+    const shieldPct = ship.shieldEnergy / ship.shieldMax;
+    const hits      = ship.shield ? ship.shieldHits : ship.shieldMaxHits;
     ctx.textAlign = 'left';
     ctx.fillStyle = ship.shield ? '#00e5ff' : 'rgba(0,229,255,0.6)';
     ctx.font = '13px monospace';
     ctx.fillText(
-      `ESCUDO  ${'●'.repeat(hits)}${'○'.repeat(SHIELD_MAX_HITS - hits)}  ${Math.round(ship.shieldEnergy)}%`,
+      `ESCUDO  ${'●'.repeat(hits)}${'○'.repeat(ship.shieldMaxHits - hits)}  ${Math.round(ship.shieldEnergy)}%`,
       14, y
     );
     ctx.fillStyle = 'rgba(0,229,255,0.25)';
@@ -824,7 +914,7 @@ function draw() {
     ctx.font = '14px monospace';
     ctx.fillStyle = skin.color;
     ctx.globalAlpha = Math.min(1, skinToast / 0.4);
-    ctx.fillText(`SKIN  ${skin.name}`, W / 2, H - 40);
+    ctx.fillText(`SKIN  ${skin.name}  ·  ${skin.trait}`, W / 2, H - 40);
     ctx.globalAlpha = 1;
   }
 
