@@ -57,7 +57,9 @@ jobs:
             {
               "bash": { "*": "deny", "gh issue*": "allow" },
               "webfetch": "deny",
-              "edit": "deny"
+              "websearch": "deny",
+              "edit": "deny",
+              "question": "deny"
             }
           PROMPT: |
             Vas a hacer triage del issue #${{ github.event.issue.number }} de este repositorio.
